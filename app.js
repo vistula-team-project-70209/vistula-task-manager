@@ -1,3 +1,4 @@
+
 const SUPABASE_URL = "https://awddmtmawdmlahxvczey.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_d0MJpDaztgaVc3xP2vVC1g_V0n_azV4";
 
@@ -11,6 +12,9 @@ const titleInput = document.getElementById("task-title");
 const descriptionInput = document.getElementById("task-description");
 const taskList = document.getElementById("task-list");
 const statusMessage = document.getElementById("status-message");
+const submitButton = document.getElementById("task-submit");
+
+let editingTaskId = null;
 
 function showStatus(message) {
   statusMessage.textContent = message;
@@ -31,7 +35,7 @@ async function loadTasks() {
 
   taskList.replaceChildren();
 
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     showStatus("No tasks yet. Add your first task!");
     return;
   }
@@ -57,7 +61,9 @@ async function loadTasks() {
 
     const status = document.createElement("p");
     status.className = "task-status";
-    status.textContent = task.completed ? "Completed" : "Pending";
+    status.textContent = task.completed
+      ? "Completed"
+      : "Pending";
 
     const actions = document.createElement("div");
     actions.className = "task-actions";
@@ -68,8 +74,10 @@ async function loadTasks() {
       ? "Mark Incomplete"
       : "Complete";
 
-    completeButton.addEventListener("click", () => {
-      updateTask(task.id, { completed: !task.completed });
+    completeButton.addEventListener("click", async () => {
+      await updateTask(task.id, {
+        completed: !task.completed
+      });
     });
 
     const editButton = document.createElement("button");
@@ -77,19 +85,35 @@ async function loadTasks() {
     editButton.textContent = "Edit";
 
     editButton.addEventListener("click", () => {
-      editTask(task);
+      editingTaskId = task.id;
+      titleInput.value = task.title;
+      descriptionInput.value = task.description || "";
+      submitButton.textContent = "Save Changes";
+      titleInput.focus();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
 
     const deleteButton = document.createElement("button");
     deleteButton.className = "delete-btn delete-task";
     deleteButton.textContent = "Delete";
 
-    deleteButton.addEventListener("click", () => {
-      deleteTask(task.id);
+    deleteButton.addEventListener("click", async () => {
+      await deleteTask(task.id);
     });
 
-    actions.append(completeButton, editButton, deleteButton);
-    taskElement.append(title, description, status, actions);
+    actions.append(
+      completeButton,
+      editButton,
+      deleteButton
+    );
+
+    taskElement.append(
+      title,
+      description,
+      status,
+      actions
+    );
+
     taskList.appendChild(taskElement);
   });
 }
@@ -101,24 +125,43 @@ taskForm.addEventListener("submit", async (event) => {
   const description = descriptionInput.value.trim();
 
   if (!title) {
-    showStatus("Please enter a task title.");
+    showStatus("Task title is required.");
     return;
   }
 
-  const { error } = await db.from("tasks").insert([
-    {
-      title: title,
-      description: description || null,
-      completed: false
-    }
-  ]);
+  submitButton.disabled = true;
 
-  if (error) {
-    showStatus("Error adding task: " + error.message);
+  let result;
+
+  if (editingTaskId !== null) {
+    result = await db
+      .from("tasks")
+      .update({
+        title: title,
+        description: description || null
+      })
+      .eq("id", editingTaskId);
+  } else {
+    result = await db
+      .from("tasks")
+      .insert({
+        title: title,
+        description: description || null,
+        completed: false
+      });
+  }
+
+  submitButton.disabled = false;
+
+  if (result.error) {
+    showStatus("Error saving task: " + result.error.message);
     return;
   }
 
+  editingTaskId = null;
   taskForm.reset();
+  submitButton.textContent = "Add Task";
+
   await loadTasks();
 });
 
@@ -136,31 +179,12 @@ async function updateTask(id, changes) {
   await loadTasks();
 }
 
-async function editTask(task) {
-  const newTitle = prompt("Edit task title:", task.title);
-
-  if (newTitle === null) return;
-
-  if (!newTitle.trim()) {
-    showStatus("Task title cannot be empty.");
-    return;
-  }
-
-  const newDescription = prompt(
-    "Edit description:",
-    task.description || ""
+async function deleteTask(id) {
+  const confirmed = window.confirm(
+    "Are you sure you want to delete this task?"
   );
 
-  if (newDescription === null) return;
-
-  await updateTask(task.id, {
-    title: newTitle.trim(),
-    description: newDescription.trim() || null
-  });
-}
-
-async function deleteTask(id) {
-  if (!confirm("Are you sure you want to delete this task?")) {
+  if (!confirmed) {
     return;
   }
 
@@ -174,14 +198,13 @@ async function deleteTask(id) {
     return;
   }
 
+  if (editingTaskId === id) {
+    editingTaskId = null;
+    taskForm.reset();
+    submitButton.textContent = "Add Task";
+  }
+
   await loadTasks();
 }
 
-if (
-  SUPABASE_URL === "https://awddmtmawdmlahxvczey.supabase.co" ||
-  SUPABASE_ANON_KEY === "sb_publishable_d0MJpDaztgaVc3xP2vVC1g_V0n_azV4"
-) {
-  showStatus("Supabase configuration is required.");
-} else {
-  loadTasks();
-}
+loadTasks();
