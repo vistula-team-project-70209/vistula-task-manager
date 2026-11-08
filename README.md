@@ -71,3 +71,5 @@ Contribution files:
 ## Deployment
 
 The application is deployed using GitHub Pages from the `main` branch.
+
+contribution by vistula-team-project-78453
